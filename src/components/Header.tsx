@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   Sparkles,
@@ -10,9 +10,10 @@ import {
   Moon,
   Activity,
   Zap,
-  BookOpen
+  Menu
 } from 'lucide-react';
 import { loggerService } from '../services/loggerService';
+import { MobileNavDrawer } from './MobileNavDrawer';
 
 export const Header: React.FC = () => {
   const {
@@ -28,6 +29,8 @@ export const Header: React.FC = () => {
     resetCurrentPlan
   } = useApp();
 
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   const inFlight = loggerService.hasInFlightCalls();
   const hasErrors = loggerService.hasRecentErrors();
 
@@ -39,110 +42,143 @@ export const Header: React.FC = () => {
   const progressPercent = learningPlan ? Math.round((completedSteps / totalSteps) * 100) : 0;
 
   return (
-    <header className="app-header">
-      {/* Brand */}
-      <div className="header-left">
-        <div className="brand-logo" onClick={resetCurrentPlan} title="Start new topic">
-          <Zap size={22} className="text-indigo-400 fill-indigo-400" />
-          <span>ScrollLearn</span>
+    <>
+      <header className="app-header">
+        {/* Brand */}
+        <div className="header-left">
+          <div className="brand-logo" onClick={resetCurrentPlan} title="Start new topic">
+            <Zap size={22} className="text-indigo-400 fill-indigo-400" />
+            <span>ScrollLearn</span>
+          </div>
+          <span className="brand-badge header-provider-badge">
+            {config.activeProvider === 'openrouter'
+              ? 'OpenRouter'
+              : config.activeProvider === 'gemini'
+              ? 'Gemini'
+              : config.activeProvider === 'openai'
+              ? 'OpenAI'
+              : config.activeProvider === 'custom'
+              ? 'Custom AI'
+              : 'Demo AI'}
+          </span>
         </div>
-        <span className="brand-badge">
-          {config.activeProvider === 'openrouter'
-            ? 'OpenRouter'
-            : config.activeProvider === 'gemini'
-            ? 'Gemini'
-            : config.activeProvider === 'openai'
-            ? 'OpenAI'
-            : config.activeProvider === 'custom'
-            ? 'Custom AI'
-            : 'Demo AI'}
-        </span>
-      </div>
 
-      {/* Center Progress HUD */}
-      {learningPlan && (
-        <div className="header-center">
-          <div className="progress-hud-box">
-            <div className="progress-hud-top">
-              <span className="progress-hud-topic" title={learningPlan.topic}>
-                📚 {learningPlan.topic}
-              </span>
-              <span className="progress-hud-percent">
-                Step {learningPlan.activeStepIndex + 1}/{totalSteps} ({progressPercent}%)
-              </span>
-            </div>
-            <div className="progress-bar-track">
-              <div
-                className="progress-bar-fill"
-                style={{ width: `${Math.max(5, progressPercent)}%` }}
-              />
+        {/* Center Progress HUD */}
+        {learningPlan && (
+          <div className="header-center">
+            <div className="progress-hud-box">
+              <div className="progress-hud-top">
+                <span className="progress-hud-topic" title={learningPlan.topic}>
+                  📚 {learningPlan.topic}
+                </span>
+                <span className="progress-hud-percent">
+                  Step {learningPlan.activeStepIndex + 1}/{totalSteps} ({progressPercent}%)
+                </span>
+              </div>
+              <div className="progress-bar-track">
+                <div
+                  className="progress-bar-fill"
+                  style={{ width: `${Math.max(5, progressPercent)}%` }}
+                />
+              </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Right Actions & Gamification */}
-      <div className="header-right">
-        {/* XP */}
-        <div className="gamify-chip xp" title="Total Experience Points">
-          <Sparkles size={14} />
-          <span>{stats.xp} XP</span>
-        </div>
-
-        {/* Streak */}
-        <div className="gamify-chip streak" title="Daily Streak">
-          <Flame size={14} />
-          <span>{stats.streakDays}d</span>
-        </div>
-
-        {/* Badges Button */}
-        <button
-          className="icon-btn"
-          onClick={() => setIsBadgesOpen(true)}
-          title={`Badges (${unlockedBadgesCount}/${badges.length})`}
-        >
-          <Award size={18} />
-        </button>
-
-        {/* Roadmap / Plan Button */}
-        {learningPlan && (
-          <button
-            className="icon-btn active"
-            onClick={() => setIsRoadmapOpen(true)}
-            title="View & Edit Learning Plan"
-          >
-            <Map size={18} />
-          </button>
         )}
 
-        {/* Real-time API Activity Log Trigger */}
-        <button
-          className="icon-btn"
-          onClick={() => setIsAPILogOpen(true)}
-          title="Live AI API Activity & Logs"
-        >
-          <Activity size={18} />
-          <span
-            className={`status-dot-indicator ${
-              inFlight ? 'calling' : hasErrors ? 'error' : ''
-            }`}
-          />
-        </button>
+        {/* Desktop Header Actions (visible on wider screens) */}
+        <div className="header-right desktop-actions">
+          {/* XP */}
+          <div className="gamify-chip xp" title="Total Experience Points">
+            <Sparkles size={14} />
+            <span>{stats.xp} XP</span>
+          </div>
 
-        {/* Theme Toggle */}
-        <button className="icon-btn" onClick={toggleTheme} title="Toggle Dark/Light Mode">
-          {config.theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-        </button>
+          {/* Streak */}
+          <div className="gamify-chip streak" title="Daily Streak">
+            <Flame size={14} />
+            <span>{stats.streakDays}d</span>
+          </div>
 
-        {/* Settings */}
-        <button
-          className="icon-btn"
-          onClick={() => setIsSettingsOpen(true)}
-          title="AI & Batch Settings"
-        >
-          <Settings size={18} />
-        </button>
-      </div>
-    </header>
+          {/* Badges Button */}
+          <button
+            className="icon-btn"
+            onClick={() => setIsBadgesOpen(true)}
+            title={`Badges (${unlockedBadgesCount}/${badges.length})`}
+          >
+            <Award size={18} />
+          </button>
+
+          {/* Roadmap / Plan Button */}
+          {learningPlan && (
+            <button
+              className="icon-btn active"
+              onClick={() => setIsRoadmapOpen(true)}
+              title="View & Edit Learning Plan"
+            >
+              <Map size={18} />
+            </button>
+          )}
+
+          {/* Real-time API Activity Log Trigger */}
+          <button
+            className="icon-btn"
+            onClick={() => setIsAPILogOpen(true)}
+            title="Live AI API Activity & Logs"
+          >
+            <Activity size={18} />
+            <span
+              className={`status-dot-indicator ${
+                inFlight ? 'calling' : hasErrors ? 'error' : ''
+              }`}
+            />
+          </button>
+
+          {/* Theme Toggle */}
+          <button className="icon-btn" onClick={toggleTheme} title="Toggle Dark/Light Mode">
+            {config.theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+
+          {/* Settings */}
+          <button
+            className="icon-btn"
+            onClick={() => setIsSettingsOpen(true)}
+            title="AI & Batch Settings"
+          >
+            <Settings size={18} />
+          </button>
+        </div>
+
+        {/* Mobile Header Actions (visible on mobile / small screens) */}
+        <div className="header-right mobile-actions">
+          <div className="gamify-chip xp" title="Total Experience Points">
+            <Sparkles size={13} className="text-amber-400" />
+            <span>{stats.xp} XP</span>
+          </div>
+
+          {/* Mobile Menu Hamburger Button */}
+          <button
+            className="mobile-hamburger-btn"
+            onClick={() => setIsMobileMenuOpen(true)}
+            aria-label="Open mobile menu"
+            title="Menu & Settings"
+          >
+            <Menu size={22} />
+            {(inFlight || hasErrors) && (
+              <span
+                className={`status-dot-indicator mobile-nav-dot ${
+                  inFlight ? 'calling' : 'error'
+                }`}
+              />
+            )}
+          </button>
+        </div>
+      </header>
+
+      {/* Mobile Slide-Out Navigation Drawer */}
+      <MobileNavDrawer
+        isOpen={isMobileMenuOpen}
+        onClose={() => setIsMobileMenuOpen(false)}
+      />
+    </>
   );
 };
