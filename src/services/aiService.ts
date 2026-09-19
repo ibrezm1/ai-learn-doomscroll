@@ -16,20 +16,87 @@ import {
 import { loggerService } from './loggerService';
 
 // Standard Free models list for OpenRouter
-export const OPENROUTER_FREE_MODELS = [
-  { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Meta Llama 3.3 70B (Free)' },
-  { id: 'google/gemini-2.0-flash-exp:free', name: 'Gemini 2.0 Flash Exp (Free)' },
-  { id: 'deepseek/deepseek-r1:free', name: 'DeepSeek R1 Reasoning (Free)' },
-  { id: 'qwen/qwen-2.5-coder-32b-instruct:free', name: 'Qwen 2.5 Coder 32B (Free)' },
-  { id: 'mistralai/mistral-7b-instruct:free', name: 'Mistral 7B Instruct (Free)' }
+export interface OpenRouterFetchedModel {
+  id: string;
+  name: string;
+  description?: string;
+  isFree: boolean;
+  contextLength?: number;
+  promptPrice?: string;
+  completionPrice?: string;
+}
+
+export const OPENROUTER_FREE_MODELS: OpenRouterFetchedModel[] = [
+  { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Meta Llama 3.3 70B (Free)', isFree: true, contextLength: 131072 },
+  { id: 'google/gemini-2.0-flash-exp:free', name: 'Gemini 2.0 Flash Exp (Free)', isFree: true, contextLength: 1048576 },
+  { id: 'deepseek/deepseek-r1:free', name: 'DeepSeek R1 Reasoning (Free)', isFree: true, contextLength: 64000 },
+  { id: 'qwen/qwen-2.5-coder-32b-instruct:free', name: 'Qwen 2.5 Coder 32B (Free)', isFree: true, contextLength: 32768 },
+  { id: 'mistralai/mistral-7b-instruct:free', name: 'Mistral 7B Instruct (Free)', isFree: true, contextLength: 32768 }
 ];
 
-export const OPENROUTER_SEARCH_MODELS = [
-  { id: 'perplexity/sonar-reasoning', name: 'Perplexity Sonar Reasoning (Web Search)' },
-  { id: 'perplexity/sonar', name: 'Perplexity Sonar (Fast Search)' },
-  { id: 'meta-llama/llama-3.3-70b-instruct:online', name: 'Llama 3.3 70B (Online Web)' },
-  { id: 'google/gemini-2.0-flash-exp:free', name: 'Gemini 2.0 Flash (with Search plugin)' }
+export const OPENROUTER_SEARCH_MODELS: OpenRouterFetchedModel[] = [
+  { id: 'perplexity/sonar-reasoning', name: 'Perplexity Sonar Reasoning (Web Search)', isFree: false },
+  { id: 'perplexity/sonar', name: 'Perplexity Sonar (Fast Search)', isFree: false },
+  { id: 'meta-llama/llama-3.3-70b-instruct:online', name: 'Llama 3.3 70B (Online Web)', isFree: false },
+  { id: 'google/gemini-2.0-flash-exp:free', name: 'Gemini 2.0 Flash (with Search plugin)', isFree: true }
 ];
+
+/**
+ * Dynamically fetches live models from OpenRouter endpoint (https://openrouter.ai/api/v1/models)
+ */
+export async function fetchLiveOpenRouterModels(apiKey?: string): Promise<OpenRouterFetchedModel[]> {
+  const headers: Record<string, string> = {
+    'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : '',
+    'X-Title': 'ScrollLearn AI'
+  };
+  if (apiKey && apiKey.trim()) {
+    headers['Authorization'] = `Bearer ${apiKey.trim()}`;
+  }
+
+  const response = await fetch('https://openrouter.ai/api/v1/models', {
+    method: 'GET',
+    headers
+  });
+
+  if (!response.ok) {
+    throw new Error(`OpenRouter models API returned HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  const json = await response.json();
+  const modelsData: any[] = json?.data || [];
+
+  if (!Array.isArray(modelsData)) {
+    throw new Error('Unexpected response format from OpenRouter models endpoint');
+  }
+
+  const mapped: OpenRouterFetchedModel[] = modelsData.map((m: any) => {
+    const promptPricing = m.pricing?.prompt;
+    const completionPricing = m.pricing?.completion;
+    const isFree =
+      (promptPricing === '0' || promptPricing === 0) &&
+      (completionPricing === '0' || completionPricing === 0) ||
+      (typeof m.id === 'string' && (m.id.endsWith(':free') || m.id.includes(':free')));
+
+    return {
+      id: m.id,
+      name: m.name || m.id,
+      description: m.description,
+      isFree,
+      contextLength: m.context_length,
+      promptPrice: promptPricing != null ? String(promptPricing) : undefined,
+      completionPrice: completionPricing != null ? String(completionPricing) : undefined
+    };
+  });
+
+  // Sort free models to the front, then alphabetically by name
+  mapped.sort((a, b) => {
+    if (a.isFree && !b.isFree) return -1;
+    if (!a.isFree && b.isFree) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  return mapped;
+}
 
 /**
  * Utility to extract clean JSON object/array from model output that might contain markdown fences.

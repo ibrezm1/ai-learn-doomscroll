@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   Settings,
@@ -13,9 +13,18 @@ import {
   Layers,
   Search,
   Cpu,
-  Bot
+  Bot,
+  RefreshCw,
+  Filter,
+  Check
 } from 'lucide-react';
-import { OPENROUTER_FREE_MODELS, OPENROUTER_SEARCH_MODELS, aiService } from '../services/aiService';
+import {
+  OPENROUTER_FREE_MODELS,
+  OPENROUTER_SEARCH_MODELS,
+  OpenRouterFetchedModel,
+  fetchLiveOpenRouterModels,
+  aiService
+} from '../services/aiService';
 import { AIProvider } from '../types';
 
 export const SettingsModal: React.FC = () => {
@@ -28,6 +37,41 @@ export const SettingsModal: React.FC = () => {
     message?: string;
     latencyMs?: number;
   }>({ running: false });
+
+  // OpenRouter dynamic models state
+  const [liveModels, setLiveModels] = useState<OpenRouterFetchedModel[]>(() => {
+    try {
+      const cached = localStorage.getItem('scrolllearn_openrouter_live_models');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return OPENROUTER_FREE_MODELS;
+  });
+
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [fetchModelsStatus, setFetchModelsStatus] = useState<string | null>(null);
+  const [filterFreeOnly, setFilterFreeOnly] = useState(true);
+  const [modelSearchQuery, setModelSearchQuery] = useState('');
+
+  const handleRefreshOpenRouterModels = async () => {
+    setIsFetchingModels(true);
+    setFetchModelsStatus(null);
+    try {
+      const fetched = await fetchLiveOpenRouterModels(config.openRouterApiKey);
+      setLiveModels(fetched);
+      try {
+        localStorage.setItem('scrolllearn_openrouter_live_models', JSON.stringify(fetched));
+      } catch (e) {}
+      const freeCount = fetched.filter((m) => m.isFree).length;
+      setFetchModelsStatus(`✓ Successfully loaded ${fetched.length} models (${freeCount} Free models available)`);
+    } catch (err: any) {
+      setFetchModelsStatus(`⚠️ ${err.message || 'Failed to fetch OpenRouter models'}`);
+    } finally {
+      setIsFetchingModels(false);
+    }
+  };
 
   if (!isSettingsOpen) return null;
 
@@ -51,6 +95,18 @@ export const SettingsModal: React.FC = () => {
       });
     }
   };
+
+  // Filtered models for dropdown / search
+  const filteredModels = liveModels.filter((m) => {
+    if (filterFreeOnly && !m.isFree) return false;
+    if (modelSearchQuery.trim()) {
+      const q = modelSearchQuery.toLowerCase();
+      return m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  const totalFreeModels = liveModels.filter((m) => m.isFree).length;
 
   return (
     <div className="modal-backdrop">
@@ -149,7 +205,8 @@ export const SettingsModal: React.FC = () => {
 
           {/* Provider Specific Settings */}
           {config.activeProvider === 'openrouter' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+              {/* API Key */}
               <div>
                 <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
                   OpenRouter API Key
@@ -169,41 +226,189 @@ export const SettingsModal: React.FC = () => {
                     color: 'var(--text-primary)'
                   }}
                 />
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                  Stored in browser LocalStorage. Get free keys at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-primary)', textDecoration: 'underline' }}>openrouter.ai/keys</a>.
+                </div>
               </div>
 
-              {/* Free Models Selector */}
+              {/* Model Selection Header with Fetch & Free Filter */}
               <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                  Select Free Model Preset
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                    OpenRouter Model (Type or Select)
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    {/* Free Filter Toggle */}
+                    <button
+                      type="button"
+                      onClick={() => setFilterFreeOnly(!filterFreeOnly)}
+                      style={{
+                        padding: '0.25rem 0.55rem',
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        borderRadius: 'var(--radius-sm)',
+                        background: filterFreeOnly ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-input)',
+                        border: `1px solid ${filterFreeOnly ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-subtle)'}`,
+                        color: filterFreeOnly ? '#34d399' : 'var(--text-secondary)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.25rem'
+                      }}
+                      title="Filter models by 100% Free models"
+                    >
+                      <Sparkles size={12} />
+                      <span>{filterFreeOnly ? 'Free Only' : 'All Models'}</span>
+                    </button>
+
+                    {/* Refresh Live Models Button */}
+                    <button
+                      type="button"
+                      onClick={handleRefreshOpenRouterModels}
+                      disabled={isFetchingModels}
+                      style={{
+                        padding: '0.25rem 0.55rem',
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        borderRadius: 'var(--radius-sm)',
+                        background: 'rgba(99, 102, 241, 0.12)',
+                        border: '1px solid rgba(99, 102, 241, 0.3)',
+                        color: 'var(--accent-primary)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.25rem'
+                      }}
+                      title="Fetch live models list from OpenRouter endpoint"
+                    >
+                      <RefreshCw size={12} className={isFetchingModels ? 'animate-spin' : ''} />
+                      <span>{isFetchingModels ? 'Fetching...' : 'Refresh Models'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Direct Typeable Model Input with datalist autocomplete */}
+                <div style={{ marginBottom: '0.45rem' }}>
+                  <input
+                    type="text"
+                    list="openrouter-models-datalist"
+                    placeholder="Type or paste custom model ID (e.g. meta-llama/llama-3.3-70b-instruct:free)"
+                    value={config.openRouterModel}
+                    onChange={(e) => setConfig({ ...config, openRouterModel: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '0.6rem 0.75rem',
+                      borderRadius: 'var(--radius-md)',
+                      background: 'var(--bg-input)',
+                      border: '1px solid var(--border-medium)',
+                      fontSize: '0.84rem',
+                      color: 'var(--text-primary)',
+                      fontFamily: 'var(--font-mono, monospace)'
+                    }}
+                  />
+                  <datalist id="openrouter-models-datalist">
+                    {liveModels.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} {m.isFree ? '(FREE)' : ''}
+                      </option>
+                    ))}
+                  </datalist>
+                </div>
+
+                {/* Search & Select dropdown */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      <Search size={14} style={{ position: 'absolute', left: '0.6rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                      <input
+                        type="text"
+                        placeholder={`Filter ${filteredModels.length} models...`}
+                        value={modelSearchQuery}
+                        onChange={(e) => setModelSearchQuery(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '0.45rem 0.6rem 0.45rem 2rem',
+                          borderRadius: 'var(--radius-sm)',
+                          background: 'var(--bg-input)',
+                          border: '1px solid var(--border-subtle)',
+                          fontSize: '0.78rem',
+                          color: 'var(--text-primary)'
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <select
+                    value={config.openRouterModel}
+                    onChange={(e) => setConfig({ ...config, openRouterModel: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '0.55rem 0.75rem',
+                      borderRadius: 'var(--radius-md)',
+                      background: 'var(--bg-input)',
+                      border: '1px solid var(--border-medium)',
+                      fontSize: '0.82rem',
+                      color: 'var(--text-primary)'
+                    }}
+                  >
+                    <option value="" disabled>-- Pick a model from list ({filteredModels.length} available) --</option>
+                    {filteredModels.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.isFree ? '✨ [FREE] ' : ''}{m.name} ({m.id}) {m.contextLength ? `• ${Math.round(m.contextLength / 1024)}k ctx` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Fetch Status Notification */}
+                {fetchModelsStatus && (
+                  <div style={{ fontSize: '0.74rem', color: fetchModelsStatus.startsWith('✓') ? '#34d399' : '#fb7185', marginTop: '0.3rem' }}>
+                    {fetchModelsStatus}
+                  </div>
+                )}
+              </div>
+
+              {/* Quick Free Presets 1-click Chips */}
+              <div>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Popular Free Presets (1-Tap Select)
                 </label>
-                <select
-                  value={config.openRouterModel}
-                  onChange={(e) => setConfig({ ...config, openRouterModel: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '0.6rem 0.75rem',
-                    borderRadius: 'var(--radius-md)',
-                    background: 'var(--bg-input)',
-                    border: '1px solid var(--border-medium)',
-                    fontSize: '0.84rem',
-                    color: 'var(--text-primary)'
-                  }}
-                >
-                  <optgroup label="Popular Free Models">
-                    {OPENROUTER_FREE_MODELS.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Search & Web Models">
-                    {OPENROUTER_SEARCH_MODELS.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                </select>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+                  {[
+                    { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Llama 3.3 70B' },
+                    { id: 'google/gemini-2.0-flash-exp:free', name: 'Gemini 2.0 Flash' },
+                    { id: 'deepseek/deepseek-r1:free', name: 'DeepSeek R1' },
+                    { id: 'qwen/qwen-2.5-coder-32b-instruct:free', name: 'Qwen 2.5 Coder' },
+                    { id: 'mistralai/mistral-7b-instruct:free', name: 'Mistral 7B' },
+                    { id: 'perplexity/sonar-reasoning', name: 'Perplexity Sonar' }
+                  ].map((preset) => {
+                    const isCurrent = config.openRouterModel === preset.id;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => setConfig({ ...config, openRouterModel: preset.id })}
+                        style={{
+                          padding: '0.3rem 0.55rem',
+                          fontSize: '0.74rem',
+                          fontWeight: 600,
+                          borderRadius: 'var(--radius-full)',
+                          background: isCurrent ? 'rgba(99, 102, 241, 0.25)' : 'var(--bg-card)',
+                          border: `1px solid ${isCurrent ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
+                          color: isCurrent ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        {isCurrent && <Check size={12} />}
+                        <span>{preset.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Web Search Toggle */}
